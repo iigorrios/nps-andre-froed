@@ -1,0 +1,43 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * Variáveis de cor da marca (formato R G B, para funcionar com <alpha-value> do Tailwind).
+ *
+ * >>> PARA TROCAR A PALETA DEPOIS: altere apenas os valores abaixo. <<<
+ * Nada nos componentes precisa mudar.
+ */
+:root {
+  /* Verde principal (saúde / nutrição) */
+  --brand-50: 236 253 245;
+  --brand-100: 209 250 229;
+  --brand-200: 167 243 208;
+  --brand-300: 110 231 183;
+  --brand-400: 52 211 153;
+  --brand-500: 16 185 129;
+  --brand-600: 5 150 105;
+  --brand-700: 4 120 87;
+  --brand-800: 6 95 70;
+  --brand-900: 6 78 59;
+
+  /* Azul de apoio (confiança / bem-estar) */
+  --accent-400: 56 189 248;
+  --accent-500: 14 165 233;
+  --accent-600: 2 132 199;
+}
+
+/* Base */
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  @apply bg-gradient-to-b from-brand-50 to-white text-slate-800 antialiased;
+  min-height: 100dvh;
+}
+
+/* Foco visível e acessível em qualquer elemento interativo */
+:focus-visible {
+  @apply outline-none ring-2 ring-offset-2 ring-brand-500;
+}

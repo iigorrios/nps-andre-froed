@@ -1,0 +1,10 @@
+# Configuração da Edge Function (usada pelo Supabase CLI).
+# Trocamos a verificação de JWT por nosso próprio token (senha), então
+# desligamos verify_jwt para esta função.
+#
+# Se você fizer deploy pela CLI: `supabase functions deploy nps-admin`
+# vai respeitar este arquivo. Pela linha de comando direta, use a flag:
+#   supabase functions deploy nps-admin --no-verify-jwt
+
+[functions.nps-admin]
+verify_jwt = false
