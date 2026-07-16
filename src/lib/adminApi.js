@@ -15,6 +15,9 @@ async function call(action, payload = {}) {
     headers: {
       "Content-Type": "application/json",
       apikey: SUPABASE_ANON_KEY,
+      // Bearer com a anon key satisfaz o gateway (Verify JWT); nosso token de
+      // admin vai no header próprio x-admin-token, que a função lê primeiro.
+      Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
       "x-admin-token": token,
     },
     body: JSON.stringify({ action, ...payload }),

@@ -16,6 +16,10 @@ export async function adminLogin(password) {
     headers: {
       "Content-Type": "application/json",
       apikey: SUPABASE_ANON_KEY,
+      // A anon key também vai como Bearer para satisfazer o gateway do Supabase
+      // quando a função está com "Verify JWT" ligado. Nosso token de admin (no
+      // login ainda não existe) trafega à parte, no header x-admin-token.
+      Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
     },
     body: JSON.stringify({ action: "login", password }),
   });
