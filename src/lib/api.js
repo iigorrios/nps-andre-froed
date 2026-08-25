@@ -22,6 +22,7 @@ export async function fetchProfessionals() {
  * Envia uma resposta da pesquisa.
  * @param {{
  *   professional_id: number,
+ *   tipo_consulta: "primeira" | "reavaliacao" | null,
  *   nps_score: number,
  *   pontualidade: number,
  *   clareza: number,

@@ -15,6 +15,24 @@ export const STAR_CRITERIA = [
   { key: "conhecimento_tecnico", label: "Conhecimento técnico" },
 ];
 
+/**
+ * Tipos de atendimento, na ordem fixa de exibição.
+ * `indefinido` cobre as respostas anteriores à coluna `tipo_consulta` e os
+ * envios cujo link não trazia `?tipo=` — nunca é "mais um tipo", é ausência
+ * de dado, por isso vem sempre por último e em cinza.
+ */
+export const CONSULTATION_TYPES = [
+  { key: "primeira", label: "1ª consulta" },
+  { key: "reavaliacao", label: "Retorno" },
+  { key: "indefinido", label: "Não informado" },
+];
+
+/** Lê o tipo de uma resposta, normalizando ausência/valor inesperado. */
+export function consultationTypeOf(response) {
+  const t = response?.tipo_consulta;
+  return t === "primeira" || t === "reavaliacao" ? t : "indefinido";
+}
+
 /** Classifica uma nota NPS em promotor/neutro/detrator. */
 export function classifyNps(score) {
   if (score >= 9) return "promotor";
@@ -86,6 +104,31 @@ export function buildRanking(professionals, responses) {
       if (b.metrics.nps !== a.metrics.nps) return b.metrics.nps - a.metrics.nps;
       return b.metrics.total - a.metrics.total;
     });
+}
+
+/**
+ * Divide as respostas por tipo de atendimento e calcula as métricas de cada
+ * fatia — responde "este profissional recebe mais avaliação de primeira
+ * consulta ou de retorno, e como é o NPS em cada caso?".
+ *
+ * Devolve sempre os três tipos, na ordem de CONSULTATION_TYPES (inclusive os
+ * zerados: a ausência é informação).
+ *
+ * @param responses lista de respostas (já filtrada por profissional, se for o caso)
+ */
+export function splitByConsultationType(responses) {
+  const groups = { primeira: [], reavaliacao: [], indefinido: [] };
+  for (const r of responses) groups[consultationTypeOf(r)].push(r);
+
+  const total = responses.length;
+
+  return CONSULTATION_TYPES.map(({ key, label }) => ({
+    key,
+    label,
+    total: groups[key].length,
+    percent: total ? (groups[key].length / total) * 100 : 0,
+    metrics: computeMetrics(groups[key]),
+  }));
 }
 
 /** Agrupa respostas por professional_id (Map). */

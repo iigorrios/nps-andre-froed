@@ -1,8 +1,15 @@
+import { useMemo } from "react";
+
 import Avatar from "../Avatar.jsx";
 import StatTile from "./StatTile.jsx";
 import NpsDistributionBar from "./NpsDistributionBar.jsx";
+import ConsultationTypeBreakdown from "./ConsultationTypeBreakdown.jsx";
 import { ROLE_LABELS } from "../../data/professionals.mock.js";
-import { STAR_CRITERIA, npsBand } from "../../lib/nps.js";
+import {
+  STAR_CRITERIA,
+  npsBand,
+  splitByConsultationType,
+} from "../../lib/nps.js";
 
 /**
  * Detalhe de um profissional: cabeçalho, KPIs, distribuição NPS,
@@ -15,6 +22,12 @@ import { STAR_CRITERIA, npsBand } from "../../lib/nps.js";
  */
 export default function ProfessionalDetail({ professional, metrics, responses }) {
   const band = npsBand(metrics.nps);
+
+  // Composição das respostas deste profissional: 1ª consulta x retorno.
+  const split = useMemo(
+    () => splitByConsultationType(responses),
+    [responses]
+  );
 
   // Comentários não vazios, mais recentes primeiro.
   const comments = responses
@@ -68,6 +81,14 @@ export default function ProfessionalDetail({ professional, metrics, responses })
               percents={metrics.percents}
               counts={metrics.counts}
             />
+          </div>
+
+          {/* 1ª consulta x retorno */}
+          <div className="rounded-2xl border border-slate-200 bg-white p-4">
+            <h4 className="mb-3 text-sm font-semibold text-slate-600">
+              1ª consulta x Retorno
+            </h4>
+            <ConsultationTypeBreakdown split={split} total={metrics.total} />
           </div>
 
           {/* Médias por critério (barras horizontais, hue única) */}

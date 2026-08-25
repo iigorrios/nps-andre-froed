@@ -1,38 +1,17 @@
-import { SCHEDULING_LINKS } from "../lib/scheduling.js";
-
-/** Formata uma data futura em "DD/MM" (pt-BR). */
-function formatFutureDate(days) {
-  const d = new Date();
-  d.setDate(d.getDate() + days);
-  return d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
-}
-
 /**
  * Cartão de "próximo passo" exibido na tela de agradecimento.
  *
- * Recebe o resultado de `getNextStep()`. Quando `step` é `null` (não deu para
- * identificar o ponto da jornada), cai no link da agenda geral.
+ * Recebe o resultado de `getNextStep()`. Quando é `null` NÃO renderiza nada —
+ * a pessoa vê só o agradecimento. Isso cobre dois casos de propósito:
+ *  - o atendimento avaliado foi com o Personal (o próximo passo seria o retorno
+ *    com a Nutri, a ~30 dias — longe demais para a agenda de hoje);
+ *  - não dá para saber o ponto da jornada (`/obrigado` aberto direto).
  *
  * Props:
  *  - step: retorno de `getNextStep()` ou null
  */
 export default function NextStepCard({ step }) {
-  // Fallback: não sabemos onde a pessoa está na jornada → agenda geral.
-  if (!step) {
-    return (
-      <div className="mt-8 rounded-3xl border border-slate-200 bg-white/70 p-5 text-left shadow-sm">
-        <p className="text-sm text-slate-600">
-          Quer já deixar sua próxima consulta marcada?
-        </p>
-        <a
-          href={SCHEDULING_LINKS.geral}
-          className="mt-4 flex w-full items-center justify-center rounded-2xl bg-brand-600 px-6 py-3.5 font-semibold text-white shadow-sm transition-colors hover:bg-brand-700"
-        >
-          Ver agenda e marcar consulta
-        </a>
-      </div>
-    );
-  }
+  if (!step) return null;
 
   return (
     <div className="mt-8 rounded-3xl border-2 border-brand-200 bg-white/80 p-5 text-left shadow-sm">
@@ -46,12 +25,6 @@ export default function NextStepCard({ step }) {
         {step.description}
       </p>
 
-      {step.delayDays > 0 && (
-        <p className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-accent-500/10 px-3 py-1 text-xs font-semibold text-accent-600">
-          📅 A partir de {formatFutureDate(step.delayDays)}
-        </p>
-      )}
-
       <a
         href={step.url}
         className="mt-5 flex w-full items-center justify-center gap-2 rounded-2xl bg-brand-600 px-6 py-3.5 font-semibold text-white shadow-sm transition-colors hover:bg-brand-700"
@@ -64,13 +37,6 @@ export default function NextStepCard({ step }) {
             clipRule="evenodd"
           />
         </svg>
-      </a>
-
-      <a
-        href={SCHEDULING_LINKS.geral}
-        className="mt-3 block text-center text-sm font-medium text-slate-500 underline-offset-2 transition-colors hover:text-brand-700 hover:underline"
-      >
-        Ver a agenda completa
       </a>
     </div>
   );

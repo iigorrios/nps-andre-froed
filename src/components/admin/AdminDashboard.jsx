@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 import StatTile from "../dashboard/StatTile.jsx";
 import NpsDistributionBar from "../dashboard/NpsDistributionBar.jsx";
 import ProfessionalRanking from "../dashboard/ProfessionalRanking.jsx";
+import ConsultationTypeBreakdown from "../dashboard/ConsultationTypeBreakdown.jsx";
 import ProfessionalDetail from "../dashboard/ProfessionalDetail.jsx";
 import ProfessionalManager from "../dashboard/ProfessionalManager.jsx";
 import ResponsesTable from "../dashboard/ResponsesTable.jsx";
@@ -15,6 +16,7 @@ import {
   computeMetrics,
   buildRanking,
   groupByProfessional,
+  splitByConsultationType,
   npsBand,
 } from "../../lib/nps.js";
 
@@ -68,6 +70,10 @@ export default function AdminDashboard({ onLogout }) {
     [professionals, responses]
   );
   const byPro = useMemo(() => groupByProfessional(responses), [responses]);
+  const overallSplit = useMemo(
+    () => splitByConsultationType(responses),
+    [responses]
+  );
 
   const focusId = selectedId ?? ranking[0]?.professional.id ?? null;
   const focusRow = ranking.find((r) => r.professional.id === focusId) ?? null;
@@ -174,15 +180,27 @@ export default function AdminDashboard({ onLogout }) {
                   />
                 </section>
 
-                {/* Distribuição geral */}
-                <section className="rounded-2xl border border-slate-200 bg-white p-5">
-                  <h2 className="mb-3 text-sm font-semibold text-slate-600">
-                    Distribuição geral das notas
-                  </h2>
-                  <NpsDistributionBar
-                    percents={overall.percents}
-                    counts={overall.counts}
-                  />
+                {/* Distribuição geral + composição por tipo de atendimento */}
+                <section className="grid gap-6 lg:grid-cols-2">
+                  <div className="rounded-2xl border border-slate-200 bg-white p-5">
+                    <h2 className="mb-3 text-sm font-semibold text-slate-600">
+                      Distribuição geral das notas
+                    </h2>
+                    <NpsDistributionBar
+                      percents={overall.percents}
+                      counts={overall.counts}
+                    />
+                  </div>
+
+                  <div className="rounded-2xl border border-slate-200 bg-white p-5">
+                    <h2 className="mb-3 text-sm font-semibold text-slate-600">
+                      1ª consulta x Retorno
+                    </h2>
+                    <ConsultationTypeBreakdown
+                      split={overallSplit}
+                      total={overall.total}
+                    />
+                  </div>
                 </section>
 
                 {/* Ranking + Detalhe */}

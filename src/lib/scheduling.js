@@ -3,10 +3,16 @@
  *
  * Sequência oficial do acompanhamento:
  *
- *   1ª consulta Nutri  →  NPS Nutri  →  1ª consulta Personal
- *   1ª consulta Personal →  NPS Personal →  (30 dias) → retorno Nutri
- *   retorno Nutri      →  NPS Nutri  →  retorno Personal
- *   retorno Personal   →  NPS Personal →  (30 dias) → retorno Nutri  (ciclo)
+ *   1ª consulta Nutri    →  NPS Nutri     →  agenda 1ª consulta Personal
+ *   1ª consulta Personal →  NPS Personal  →  (nada)
+ *   retorno Nutri        →  NPS Nutri     →  agenda retorno Personal
+ *   retorno Personal     →  NPS Personal  →  (nada)
+ *
+ * REGRA: só oferecemos agendamento depois do NPS do NUTRICIONISTA. Depois do
+ * Personal o próximo passo seria o retorno com a Nutri, a ~30 dias — distante
+ * demais para uma agenda que ainda não está organizada nesse horizonte. Esses
+ * retornos são combinados fora da pesquisa (WhatsApp), então a tela de
+ * agradecimento não mostra cartão nenhum nesse caso.
  *
  * Este módulo concentra os links e a regra "qual é o próximo agendamento",
  * para que a tela de agradecimento (e qualquer outra) apenas consuma o
@@ -15,9 +21,16 @@
 
 const BASE = "https://agendamento.andrefroed.com.br";
 
-/** Links oficiais de agendamento. */
+/**
+ * Links oficiais de agendamento.
+ *
+ * Os links de `nutricionista` NÃO são usados por `getNextStep()` hoje — o
+ * agendamento com a Nutri (1ª consulta e retorno) é combinado fora da pesquisa.
+ * Ficam aqui como fonte da verdade das URLs da consultoria, para o time e para
+ * o dia em que a agenda de retorno abrir esse horizonte.
+ */
 export const SCHEDULING_LINKS = {
-  /** Agenda geral — usada como fallback quando não sabemos o próximo passo. */
+  /** Agenda geral (todas as especialidades). */
   geral: `${BASE}/agenda`,
   nutricionista: {
     primeira: `${BASE}/agendar/nutricao?tipo=primeira`,
@@ -75,35 +88,23 @@ export function normalizeRole(value) {
 /**
  * Mapa da jornada: atendimento recém-avaliado → próximo agendamento.
  * Chave: `${role}:${tipo}` do atendimento que acabou de ser avaliado.
+ *
+ * Só há entradas para o nutricionista — ver a REGRA no topo do arquivo. As
+ * chaves `personal:*` ficam deliberadamente ausentes: após o NPS do Personal
+ * não oferecemos agendamento.
  */
 const JOURNEY = {
   "nutricionista:primeira": {
     role: "personal",
     tipo: "primeira",
-    delayDays: 0,
     description:
       "Com o plano alimentar em mãos, o próximo passo é montar o seu treino com o Personal Trainer.",
-  },
-  "personal:primeira": {
-    role: "nutricionista",
-    tipo: "reavaliacao",
-    delayDays: 30,
-    description:
-      "Seu primeiro ciclo está completo! Em cerca de 30 dias acontece o retorno com a Nutricionista — já deixe agendado para garantir o melhor horário.",
   },
   "nutricionista:reavaliacao": {
     role: "personal",
     tipo: "reavaliacao",
-    delayDays: 0,
     description:
       "Agora é hora de ajustar o treino junto com a nova fase do plano alimentar.",
-  },
-  "personal:reavaliacao": {
-    role: "nutricionista",
-    tipo: "reavaliacao",
-    delayDays: 30,
-    description:
-      "Mais um ciclo concluído! Em cerca de 30 dias acontece o próximo retorno com a Nutricionista — já deixe agendado.",
   },
 };
 
@@ -115,12 +116,13 @@ const JOURNEY = {
  * @returns {{
  *   role: "nutricionista" | "personal",
  *   tipo: "primeira" | "reavaliacao",
- *   delayDays: number,
  *   url: string,
  *   title: string,
  *   description: string,
  *   cta: string
- * } | null}  `null` quando não dá para determinar (ex.: link aberto direto).
+ * } | null}  `null` quando não há agendamento a oferecer — seja porque o
+ *   atendimento avaliado foi com o Personal, seja porque não dá para
+ *   determinar o ponto da jornada (ex.: `/obrigado` aberto direto).
  */
 export function getNextStep(role, tipo) {
   const from = normalizeRole(role);
@@ -136,7 +138,6 @@ export function getNextStep(role, tipo) {
   return {
     role: next.role,
     tipo: next.tipo,
-    delayDays: next.delayDays,
     url: SCHEDULING_LINKS[next.role][next.tipo],
     title: isRetorno
       ? `Retorno com ${artigo} ${label}`

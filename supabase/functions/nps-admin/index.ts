@@ -209,7 +209,7 @@ Deno.serve(async (req) => {
         // cada resposta multiplicava o payload (dezenas de MB) e estourava o
         // limite de memória do worker (WORKER_RESOURCE_LIMIT / 546).
         .select(
-          "id, professional_id, nps_score, pontualidade, clareza, simpatia, conhecimento_tecnico, comentario, created_at",
+          "id, professional_id, tipo_consulta, nps_score, pontualidade, clareza, simpatia, conhecimento_tecnico, comentario, created_at",
         )
         .order("created_at", { ascending: false });
       if (error) return json({ error: error.message }, 400);

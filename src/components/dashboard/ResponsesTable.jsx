@@ -1,6 +1,11 @@
 import { useMemo, useState } from "react";
 import { ROLE_LABELS } from "../../data/professionals.mock.js";
-import { classifyNps, STAR_CRITERIA } from "../../lib/nps.js";
+import {
+  classifyNps,
+  consultationTypeOf,
+  CONSULTATION_TYPES,
+  STAR_CRITERIA,
+} from "../../lib/nps.js";
 
 /**
  * Lista de respostas com opção de EXCLUIR (para apagar respostas dadas por
@@ -17,8 +22,20 @@ const NPS_BADGE = {
   detrator: "bg-red-50 text-red-700",
 };
 
+/** Mesmas cores do ConsultationTypeBreakdown, em versão "pílula". */
+const TYPE_BADGE = {
+  primeira: "bg-sky-50 text-sky-700",
+  reavaliacao: "bg-violet-50 text-violet-700",
+  indefinido: "bg-slate-100 text-slate-500",
+};
+
+const TYPE_LABEL = Object.fromEntries(
+  CONSULTATION_TYPES.map(({ key, label }) => [key, label])
+);
+
 export default function ResponsesTable({ responses, professionals, onDelete }) {
   const [filterId, setFilterId] = useState("all");
+  const [filterType, setFilterType] = useState("all");
   const [deletingId, setDeletingId] = useState(null);
   const [error, setError] = useState("");
 
@@ -30,9 +47,16 @@ export default function ResponsesTable({ responses, professionals, onDelete }) {
   }, [professionals]);
 
   const filtered = useMemo(() => {
-    if (filterId === "all") return responses;
-    return responses.filter((r) => String(r.professional_id) === filterId);
-  }, [responses, filterId]);
+    return responses.filter((r) => {
+      if (filterId !== "all" && String(r.professional_id) !== filterId) {
+        return false;
+      }
+      if (filterType !== "all" && consultationTypeOf(r) !== filterType) {
+        return false;
+      }
+      return true;
+    });
+  }, [responses, filterId, filterType]);
 
   const handleDelete = async (r) => {
     if (
@@ -73,6 +97,23 @@ export default function ResponsesTable({ responses, professionals, onDelete }) {
             </option>
           ))}
         </select>
+        <label htmlFor="filtro-tipo" className="text-sm font-medium text-slate-600">
+          Tipo:
+        </label>
+        <select
+          id="filtro-tipo"
+          value={filterType}
+          onChange={(e) => setFilterType(e.target.value)}
+          className="rounded-xl border-2 border-slate-200 px-3 py-2 text-sm text-slate-700 focus:border-brand-400"
+        >
+          <option value="all">Todos</option>
+          {CONSULTATION_TYPES.map(({ key, label }) => (
+            <option key={key} value={key}>
+              {label}
+            </option>
+          ))}
+        </select>
+
         <span className="text-sm text-slate-400">
           {filtered.length} {filtered.length === 1 ? "resposta" : "respostas"}
         </span>
@@ -91,6 +132,7 @@ export default function ResponsesTable({ responses, professionals, onDelete }) {
           {filtered.map((r) => {
             const pro = r.professional ?? nameById.get(r.professional_id);
             const category = classifyNps(r.nps_score);
+            const tipo = consultationTypeOf(r);
             return (
               <li
                 key={r.id}
@@ -105,6 +147,11 @@ export default function ResponsesTable({ responses, professionals, onDelete }) {
                       {pro ? ROLE_LABELS[pro.role] ?? pro.role : "—"} ·{" "}
                       {formatDate(r.created_at)}
                     </p>
+                    <span
+                      className={`mt-1.5 inline-block rounded-md px-2 py-0.5 text-xs font-semibold ${TYPE_BADGE[tipo]}`}
+                    >
+                      {TYPE_LABEL[tipo]}
+                    </span>
                   </div>
 
                   <div className="flex items-center gap-2">

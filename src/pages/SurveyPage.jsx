@@ -122,6 +122,8 @@ export default function SurveyPage() {
 
     const payload = {
       professional_id: form.professional_id,
+      // null quando o link não trouxe `?tipo=` e a pessoa não respondeu.
+      tipo_consulta: form.tipo,
       nps_score: form.nps_score,
       pontualidade: form.ratings.pontualidade,
       clareza: form.ratings.clareza,

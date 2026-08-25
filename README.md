@@ -74,19 +74,33 @@ seleciona na Etapa 1 (`role` em `nps_professionals`).
 
 ### Jornada
 
-| Avaliação enviada        | Link oferecido em `/obrigado`         | Observação    |
-| ------------------------ | ------------------------------------- | ------------- |
-| Nutri · primeira         | Personal `?tipo=primeira`             | imediato      |
-| Personal · primeira      | Nutri `?tipo=reavaliacao`             | "a partir de" +30 dias |
-| Nutri · reavaliação      | Personal `?tipo=reavaliacao`          | imediato      |
-| Personal · reavaliação   | Nutri `?tipo=reavaliacao`             | reinicia o ciclo, +30 dias |
+| Avaliação enviada      | Link oferecido em `/obrigado` |
+| ---------------------- | ----------------------------- |
+| Nutri · primeira       | Personal `?tipo=primeira`     |
+| Nutri · reavaliação    | Personal `?tipo=reavaliacao`  |
+| Personal · primeira    | **nenhum**                    |
+| Personal · reavaliação | **nenhum**                    |
 
-Quando não dá para identificar o ponto da jornada, cai no link da **agenda
-geral**. Os links e a regra ficam em [`src/lib/scheduling.js`](src/lib/scheduling.js)
-— é o único arquivo a mexer se as URLs mudarem.
+**Só oferecemos agendamento depois do NPS do nutricionista.** Depois do
+Personal o próximo passo da jornada seria o retorno com a Nutri, a ~30 dias —
+distante demais para uma agenda que ainda não está organizada nesse horizonte.
+Esses retornos são combinados fora da pesquisa. Nesse caso, e também quando não
+dá para identificar o ponto da jornada, a tela mostra só o agradecimento.
 
-O tipo do atendimento **não é gravado** em `nps_responses`; ele só trafega pela
-URL (`/obrigado?prof=…&tipo=…`) para montar o próximo link.
+Os links e a regra ficam em [`src/lib/scheduling.js`](src/lib/scheduling.js) — é
+o único arquivo a mexer se as URLs mudarem ou se a agenda de retorno abrir esse
+horizonte (os links da Nutri já estão lá, sem uso hoje).
+
+### Tipo do atendimento no banco
+
+Além de montar o link, o tipo é gravado em `nps_responses.tipo_consulta`
+(`primeira` | `reavaliacao` | `NULL`). `NULL` são as respostas anteriores à
+coluna ou envios sem o parâmetro — aparecem no painel como **"Não informado"**.
+
+O painel usa esse campo em três lugares: um cartão **"1ª consulta x Retorno"** na
+Visão geral, o mesmo cartão no detalhe de cada profissional (para ver se ele
+recebe mais avaliação de primeira consulta ou de retorno, e o NPS de cada
+fatia), e um filtro + etiqueta na aba **Respostas**.
 
 ## Estrutura
 
@@ -108,6 +122,7 @@ src/
       AdminDashboard.jsx         # Painel autenticado (3 abas)
     dashboard/
       StatTile / NpsDistributionBar / ProfessionalRanking
+      ConsultationTypeBreakdown      # 1ª consulta x retorno
       ProfessionalDetail / ProfessionalManager / ResponsesTable
   pages/
     SurveyPage.jsx               # Wizard + insert no Supabase
@@ -140,6 +155,7 @@ Cada resposta gravada em `nps_responses`:
 ```js
 {
   professional_id: 1,
+  tipo_consulta: "primeira",  // "primeira" | "reavaliacao" | null
   nps_score: 9,
   pontualidade: 5,
   clareza: 4,

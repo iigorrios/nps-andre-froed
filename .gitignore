@@ -6,6 +6,9 @@ dist-ssr
 .env.*
 !.env.example
 
+# Supabase CLI (estado local do link com o projeto)
+supabase/.temp
+
 # Editor
 .vscode/*
 !.vscode/extensions.json
