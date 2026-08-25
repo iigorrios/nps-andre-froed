@@ -3,7 +3,7 @@
 //
 // Concentra TODAS as operações privilegiadas do painel:
 //   - login          → valida a senha (secret ADMIN_PASSWORD) e emite um token
-//   - listResponses  → lista as respostas (com o profissional embutido)
+//   - listResponses  → lista as respostas (cruze por `professional_id`)
 //   - deleteResponse → apaga uma resposta dada por engano
 //   - addProfessional / deleteProfessional → gestão da base de profissionais
 //
@@ -11,13 +11,19 @@
 // token assinado (HMAC-SHA256, chave = ADMIN_PASSWORD) com validade de 12h. As
 // demais ações exigem esse token no header `x-admin-token`.
 //
+// Fotos: nunca são gravadas em base64 na tabela. O painel envia uma data-URL,
+// a função sobe o binário para o bucket público `nps-photos` e guarda só a URL
+// na coluna `photo` (ver PHOTO_BUCKET abaixo).
+//
 // Segredos necessários (Dashboard → Edge Functions → Secrets):
 //   - ADMIN_PASSWORD               (você define — a senha do painel)
 //   - SUPABASE_URL                 (injetado automaticamente pelo Supabase)
 //   - SUPABASE_SERVICE_ROLE_KEY    (injetado automaticamente pelo Supabase)
 //
-// IMPORTANTE: faça o deploy SEM verificação de JWT, pois usamos nosso próprio
-// token:  supabase functions deploy nps-admin --no-verify-jwt
+// Deploy: a função está publicada COM verify_jwt ligado — o painel manda a anon
+// key no Authorization só para passar pelo gateway, e o token de admin vai no
+// header próprio `x-admin-token`, que é o que de fato autoriza as ações.
+//   supabase functions deploy nps-admin
 // =============================================================================
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -26,6 +32,18 @@ const ADMIN_PASSWORD = Deno.env.get("ADMIN_PASSWORD") ?? "";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 const TOKEN_TTL_MS = 12 * 60 * 60 * 1000; // 12 horas
+
+/** Bucket público onde ficam as fotos dos profissionais. */
+const PHOTO_BUCKET = "nps-photos";
+const PHOTO_EXT: Record<string, string> = {
+  "image/webp": "webp",
+  "image/jpeg": "jpg",
+  "image/jpg": "jpg",
+  "image/png": "png",
+  "image/gif": "gif",
+};
+/** Teto de segurança do binário decodificado (o bucket também limita em 5 MB). */
+const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -77,6 +95,60 @@ async function verifyToken(token: string | null): Promise<boolean> {
   if (!Number.isFinite(exp) || exp < Date.now()) return false;
   const expected = await hmac(expStr);
   return safeEqual(sig, expected);
+}
+
+// ---- Fotos (bucket em vez de base64 na tabela) ------------------------------
+
+/**
+ * Sobe uma data-URL para o bucket e devolve a URL pública.
+ * Devolve a própria string quando já é uma URL http(s) — ou seja, o painel pode
+ * mandar tanto o arquivo novo quanto uma foto já hospedada.
+ */
+// deno-lint-ignore no-explicit-any
+async function uploadPhoto(supabase: any, id: number, photo: string) {
+  if (/^https?:\/\//i.test(photo)) return photo;
+
+  const m = /^data:([^;,]+);base64,/.exec(photo);
+  if (!m) throw new Error("Formato de imagem não reconhecido.");
+
+  const mime = m[1].toLowerCase();
+  const ext = PHOTO_EXT[mime];
+  if (!ext) throw new Error(`Tipo de imagem não suportado: ${mime}.`);
+
+  const raw = atob(photo.slice(m[0].length));
+  if (raw.length > MAX_PHOTO_BYTES) throw new Error("Imagem muito grande.");
+  const bin = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) bin[i] = raw.charCodeAt(i);
+
+  const path = `professionals/${id}.${ext}`;
+  const { error } = await supabase.storage
+    .from(PHOTO_BUCKET)
+    .upload(path, bin, { contentType: mime, upsert: true });
+  if (error) throw new Error(error.message);
+
+  // limpa versões antigas em outras extensões, para não deixar órfãos
+  await supabase.storage
+    .from(PHOTO_BUCKET)
+    .remove(
+      Object.values(PHOTO_EXT)
+        .filter((e) => e !== ext)
+        .map((e) => `professionals/${id}.${e}`),
+    );
+
+  return supabase.storage.from(PHOTO_BUCKET).getPublicUrl(path)
+    .data.publicUrl as string;
+}
+
+/** Remove do bucket qualquer foto do profissional (todas as extensões). */
+// deno-lint-ignore no-explicit-any
+async function removePhoto(supabase: any, id: number) {
+  await supabase.storage
+    .from(PHOTO_BUCKET)
+    .remove(
+      [...new Set(Object.values(PHOTO_EXT))].map(
+        (e) => `professionals/${id}.${e}`,
+      ),
+    );
 }
 
 // ---- Handler ----------------------------------------------------------------
@@ -132,8 +204,12 @@ Deno.serve(async (req) => {
     case "listResponses": {
       const { data, error } = await supabase
         .from("nps_responses")
+        // Sem embutir o profissional: o painel já carrega a lista de
+        // profissionais à parte e cruza por `professional_id`. Embutir a foto em
+        // cada resposta multiplicava o payload (dezenas de MB) e estourava o
+        // limite de memória do worker (WORKER_RESOURCE_LIMIT / 546).
         .select(
-          "id, professional_id, nps_score, pontualidade, clareza, simpatia, conhecimento_tecnico, comentario, created_at, professional:nps_professionals(id, name, role, photo)",
+          "id, professional_id, nps_score, pontualidade, clareza, simpatia, conhecimento_tecnico, comentario, created_at",
         )
         .order("created_at", { ascending: false });
       if (error) return json({ error: error.message }, 400);
@@ -157,13 +233,35 @@ Deno.serve(async (req) => {
       if (!name || !["nutricionista", "personal"].includes(role)) {
         return json({ error: "Nome e especialidade são obrigatórios." }, 400);
       }
+      // Grava primeiro sem foto: o id da linha é o nome do arquivo no bucket.
       const { data, error } = await supabase
         .from("nps_professionals")
-        .insert({ name, role, photo })
+        .insert({ name, role, photo: null })
         .select("id, name, role, photo")
         .single();
       if (error) return json({ error: error.message }, 400);
-      return json({ professional: data });
+
+      if (!photo) return json({ professional: data });
+
+      try {
+        const url = await uploadPhoto(supabase, data.id, String(photo));
+        const { data: updated, error: upErr } = await supabase
+          .from("nps_professionals")
+          .update({ photo: url })
+          .eq("id", data.id)
+          .select("id, name, role, photo")
+          .single();
+        if (upErr) throw new Error(upErr.message);
+        return json({ professional: updated });
+      } catch (e) {
+        // Foto falhou → desfaz o cadastro para não deixar registro pela metade.
+        await supabase.from("nps_professionals").delete().eq("id", data.id);
+        await removePhoto(supabase, data.id);
+        return json(
+          { error: (e as Error).message || "Falha ao salvar a foto." },
+          400,
+        );
+      }
     }
 
     case "deleteProfessional": {
@@ -173,6 +271,8 @@ Deno.serve(async (req) => {
         .delete()
         .eq("id", body.id);
       if (error) return json({ error: error.message }, 400);
+      // A linha já saiu; a foto no bucket é lixo a partir daqui.
+      await removePhoto(supabase, Number(body.id));
       return json({ ok: true });
     }
 

@@ -6,14 +6,54 @@ import { addProfessional, deleteProfessional } from "../../lib/adminApi.js";
 /**
  * Cadastro e gestão de profissionais (nutricionistas e personais).
  *
- * A foto é lida do arquivo local, convertida em data-URL (base64) e gravada na
- * coluna `photo` da tabela `nps_professionals` via Edge Function.
+ * A foto é lida do arquivo local e reduzida aqui no navegador para um quadrado
+ * de 256px em WebP (~10 KB) antes de subir. A Edge Function grava esse binário
+ * no bucket `nps-photos` e guarda só a URL na coluna `photo`. Enviar a imagem
+ * original (fotos de celular passam de 1 MB) inchava a tabela e o payload de
+ * toda a pesquisa.
  *
  * Props:
  *  - professionals: lista atual (vem do painel)
  *  - onChanged: async () => void  — recarrega os dados após cadastrar/remover
  */
-const MAX_PHOTO_BYTES = 2 * 1024 * 1024; // 2 MB
+const MAX_PHOTO_BYTES = 10 * 1024 * 1024; // 10 MB no arquivo de origem
+const PHOTO_SIZE = 256; // lado do quadrado final, em px
+
+/**
+ * Reduz o arquivo para um quadrado de PHOTO_SIZE (recorte central, sem
+ * distorcer) e devolve a data-URL em WebP.
+ */
+function resizeToSquare(file) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const side = Math.min(img.naturalWidth, img.naturalHeight);
+      const canvas = document.createElement("canvas");
+      canvas.width = PHOTO_SIZE;
+      canvas.height = PHOTO_SIZE;
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(
+        img,
+        (img.naturalWidth - side) / 2, // recorte central
+        (img.naturalHeight - side) / 2,
+        side,
+        side,
+        0,
+        0,
+        PHOTO_SIZE,
+        PHOTO_SIZE
+      );
+      resolve(canvas.toDataURL("image/webp", 0.82));
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error("Não foi possível ler a imagem."));
+    };
+    img.src = url;
+  });
+}
 
 export default function ProfessionalManager({ professionals, onChanged }) {
   const fileInputRef = useRef(null);
@@ -25,8 +65,8 @@ export default function ProfessionalManager({ professionals, onChanged }) {
   const [saving, setSaving] = useState(false);
   const [removingId, setRemovingId] = useState(null);
 
-  /** Lê o arquivo selecionado e gera a data-URL de preview. */
-  const handlePhotoChange = (e) => {
+  /** Lê o arquivo selecionado, reduz e gera a data-URL de preview/upload. */
+  const handlePhotoChange = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -35,16 +75,16 @@ export default function ProfessionalManager({ professionals, onChanged }) {
       return;
     }
     if (file.size > MAX_PHOTO_BYTES) {
-      setError("Imagem muito grande (máx. 2 MB).");
+      setError("Imagem muito grande (máx. 10 MB).");
       return;
     }
 
-    const reader = new FileReader();
-    reader.onload = () => {
-      setPhoto(reader.result);
+    try {
+      setPhoto(await resizeToSquare(file));
       setError("");
-    };
-    reader.readAsDataURL(file);
+    } catch (err) {
+      setError(err?.message || "Não foi possível ler a imagem.");
+    }
   };
 
   const resetForm = () => {
