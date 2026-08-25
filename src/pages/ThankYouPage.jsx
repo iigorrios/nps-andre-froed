@@ -1,11 +1,27 @@
+import { useSearchParams } from "react-router-dom";
+
+import NextStepCard from "../components/NextStepCard.jsx";
+import { getNextStep } from "../lib/scheduling.js";
+
 /**
  * Etapa 5 — Tela de agradecimento (/obrigado).
  *
  * Mensagem calorosa, alinhada à identidade da consultoria (transformação,
  * saúde, disciplina). Propositalmente SEM botão de voltar para a pesquisa,
  * para evitar reenvio acidental de respostas.
+ *
+ * Além do agradecimento, mostra o link do PRÓXIMO agendamento da jornada.
+ * O ponto da jornada chega pela querystring (`?prof=…&tipo=…`), preenchida
+ * pela SurveyPage — usar a URL (em vez do state do router) faz o link
+ * sobreviver a um refresh ou a um compartilhamento da página.
  */
 export default function ThankYouPage() {
+  const [searchParams] = useSearchParams();
+  const nextStep = getNextStep(
+    searchParams.get("prof"),
+    searchParams.get("tipo")
+  );
+
   return (
     <main className="flex min-h-[100dvh] w-full items-center justify-center px-4 py-10">
       <div className="w-full max-w-md animate-fade-in-up text-center">
@@ -33,9 +49,8 @@ export default function ThankYouPage() {
           André Froed</span> está com você em cada passo.
         </p>
 
-        <p className="mt-6 text-sm font-medium text-slate-400">
-          Você já pode fechar esta página.
-        </p>
+        {/* Próximo agendamento da jornada */}
+        <NextStepCard step={nextStep} />
       </div>
     </main>
   );

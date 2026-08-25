@@ -50,7 +50,43 @@ no [SUPABASE_SETUP.md](SUPABASE_SETUP.md).
 3. **Perguntas complementares** — 4 avaliações por estrelas (1–5):
    pontualidade, clareza, simpatia e conhecimento técnico.
 4. **Comentário aberto** (opcional) + botão **Enviar avaliação**.
-5. **Tela de agradecimento** (`/obrigado`) — sem retorno à pesquisa.
+5. **Tela de agradecimento** (`/obrigado`) — sem retorno à pesquisa, mas com o
+   link do **próximo agendamento** da jornada (ver abaixo).
+
+## Link da pesquisa e próximo agendamento
+
+O link enviado ao cliente deve carregar o **tipo do atendimento** na
+querystring. É esse parâmetro que define qual link de agendamento aparece na
+tela de agradecimento:
+
+```
+https://SEU-DOMINIO/?tipo=primeira       # primeira consulta
+https://SEU-DOMINIO/?tipo=reavaliacao    # retorno / reavaliação
+```
+
+Com o parâmetro presente, a pesquisa **não pergunta** o tipo — o cliente só
+escolhe o profissional. Sem o parâmetro (link antigo, link colado à mão), a
+Etapa 1 exibe dois botões para o próprio cliente informar, de modo que o fluxo
+nunca quebra.
+
+A especialidade não vai no link: ela vem do profissional que o cliente
+seleciona na Etapa 1 (`role` em `nps_professionals`).
+
+### Jornada
+
+| Avaliação enviada        | Link oferecido em `/obrigado`         | Observação    |
+| ------------------------ | ------------------------------------- | ------------- |
+| Nutri · primeira         | Personal `?tipo=primeira`             | imediato      |
+| Personal · primeira      | Nutri `?tipo=reavaliacao`             | "a partir de" +30 dias |
+| Nutri · reavaliação      | Personal `?tipo=reavaliacao`          | imediato      |
+| Personal · reavaliação   | Nutri `?tipo=reavaliacao`             | reinicia o ciclo, +30 dias |
+
+Quando não dá para identificar o ponto da jornada, cai no link da **agenda
+geral**. Os links e a regra ficam em [`src/lib/scheduling.js`](src/lib/scheduling.js)
+— é o único arquivo a mexer se as URLs mudarem.
+
+O tipo do atendimento **não é gravado** em `nps_responses`; ele só trafega pela
+URL (`/obrigado?prof=…&tipo=…`) para montar o próximo link.
 
 ## Estrutura
 
@@ -62,6 +98,8 @@ supabase/
 src/
   components/
     ProfessionalSelector.jsx     # Etapa 1
+    ConsultationTypeSelector.jsx # Etapa 1 (só sem `?tipo=` na URL)
+    NextStepCard.jsx             # CTA do próximo agendamento (/obrigado)
     NPSScale.jsx                 # Etapa 2
     ExtraQuestions.jsx           # Etapa 3 (usa StarRating)
     StarRating.jsx / CommentBox.jsx / ProgressBar.jsx / Avatar.jsx
@@ -81,6 +119,7 @@ src/
     adminAuth.js                 # Login por senha → token de sessão
     adminApi.js                  # Ações admin via Edge Function
     nps.js                       # Agregações de NPS (puras)
+    scheduling.js                # Links de agendamento + regra da jornada
   data/professionals.mock.js     # Só ROLE_LABELS + seed de referência
   App.jsx                        # Rotas
   main.jsx                       # Entry point

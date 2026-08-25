@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 
 import ProgressBar from "../components/ProgressBar.jsx";
 import ProfessionalSelector from "../components/ProfessionalSelector.jsx";
+import ConsultationTypeSelector from "../components/ConsultationTypeSelector.jsx";
 import NPSScale from "../components/NPSScale.jsx";
 import ExtraQuestions, {
   EXTRA_QUESTION_KEYS,
@@ -11,6 +12,7 @@ import CommentBox from "../components/CommentBox.jsx";
 
 import { fetchProfessionals, submitResponse } from "../lib/api.js";
 import { isSupabaseConfigured } from "../lib/supabaseClient.js";
+import { normalizeConsultationType } from "../lib/scheduling.js";
 
 const TOTAL_STEPS = 4;
 
@@ -22,6 +24,11 @@ const TOTAL_STEPS = 4;
  */
 export default function SurveyPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+
+  // Tipo do atendimento pode vir pronto no link da pesquisa
+  // (ex.: /?tipo=primeira). Quando vem, não perguntamos de novo.
+  const tipoFromUrl = normalizeConsultationType(searchParams.get("tipo"));
 
   // Lista de profissionais (carregada do Supabase).
   const [professionals, setProfessionals] = useState([]);
@@ -56,6 +63,7 @@ export default function SurveyPage() {
   // Estado consolidado da resposta.
   const [form, setForm] = useState({
     professional_id: null,
+    tipo: tipoFromUrl, // "primeira" | "reavaliacao" | null
     nps_score: null,
     ratings: {
       pontualidade: 0,
@@ -76,6 +84,8 @@ export default function SurveyPage() {
   const setProfessional = (id) =>
     setForm((f) => ({ ...f, professional_id: id }));
 
+  const setTipo = (tipo) => setForm((f) => ({ ...f, tipo }));
+
   const setNpsScore = (score) => setForm((f) => ({ ...f, nps_score: score }));
 
   const setRating = (key, value) =>
@@ -87,7 +97,7 @@ export default function SurveyPage() {
   const canAdvance = useMemo(() => {
     switch (step) {
       case 1:
-        return form.professional_id !== null;
+        return form.professional_id !== null && form.tipo !== null;
       case 2:
         return form.nps_score !== null;
       case 3:
@@ -123,8 +133,16 @@ export default function SurveyPage() {
 
     try {
       await submitResponse(payload);
+
+      // Leva o ponto da jornada na querystring para que a tela de
+      // agradecimento saiba qual é o próximo agendamento a oferecer.
+      const proximo = new URLSearchParams();
+      if (selectedProfessional?.role) proximo.set("prof", selectedProfessional.role);
+      if (form.tipo) proximo.set("tipo", form.tipo);
+      const qs = proximo.toString();
+
       // Redireciona para a tela de agradecimento (replace: evita reenvio).
-      navigate("/obrigado", { replace: true });
+      navigate(qs ? `/obrigado?${qs}` : "/obrigado", { replace: true });
     } catch (e) {
       setSubmitError(
         e?.message || "Não foi possível enviar. Tente novamente em instantes."
@@ -168,11 +186,20 @@ export default function SurveyPage() {
           ) : loadError ? (
             <p className="py-10 text-center text-sm text-red-500">{loadError}</p>
           ) : (
-            <ProfessionalSelector
-              professionals={professionals}
-              selectedId={form.professional_id}
-              onSelect={setProfessional}
-            />
+            <>
+              <ProfessionalSelector
+                professionals={professionals}
+                selectedId={form.professional_id}
+                onSelect={setProfessional}
+              />
+              {/* Só perguntamos o tipo quando o link não trouxe `?tipo=`. */}
+              {!tipoFromUrl && (
+                <ConsultationTypeSelector
+                  value={form.tipo}
+                  onChange={setTipo}
+                />
+              )}
+            </>
           ))}
 
         {step === 2 && (
