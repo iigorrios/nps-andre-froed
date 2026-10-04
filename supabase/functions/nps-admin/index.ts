@@ -2,36 +2,30 @@
 // Edge Function: nps-admin
 //
 // Concentra TODAS as operações privilegiadas do painel:
-//   - login          → valida a senha (secret ADMIN_PASSWORD) e emite um token
+//   - login          → aposentado (o painel usa o login do time)
 //   - listResponses  → lista as respostas (cruze por `professional_id`)
 //   - deleteResponse → apaga uma resposta dada por engano
 //   - addProfessional / deleteProfessional → gestão da base de profissionais
 //
-// Autenticação: a senha nunca chega ao navegador. No login, a função devolve um
-// token assinado (HMAC-SHA256, chave = ADMIN_PASSWORD) com validade de 12h. As
-// demais ações exigem esse token no header `x-admin-token`.
+// Autenticação: login do time (Supabase Auth) + permissão no sistema "nps" do
+// Acessos central (acessos-af). O painel manda o access_token do usuário no
+// Authorization; a função confere quem é e se public.acesso_meu('nps') devolve
+// um papel. A antiga senha única (ADMIN_PASSWORD) não é mais aceita.
 //
 // Fotos: nunca são gravadas em base64 na tabela. O painel envia uma data-URL,
 // a função sobe o binário para o bucket público `nps-photos` e guarda só a URL
 // na coluna `photo` (ver PHOTO_BUCKET abaixo).
 //
-// Segredos necessários (Dashboard → Edge Functions → Secrets):
-//   - ADMIN_PASSWORD               (você define — a senha do painel)
-//   - SUPABASE_URL                 (injetado automaticamente pelo Supabase)
-//   - SUPABASE_SERVICE_ROLE_KEY    (injetado automaticamente pelo Supabase)
-//
-// Deploy: a função está publicada COM verify_jwt ligado — o painel manda a anon
-// key no Authorization só para passar pelo gateway, e o token de admin vai no
-// header próprio `x-admin-token`, que é o que de fato autoriza as ações.
+// Segredos: SUPABASE_URL, SUPABASE_ANON_KEY e SUPABASE_SERVICE_ROLE_KEY
+// (injetados automaticamente pelo Supabase).
 //   supabase functions deploy nps-admin
 // =============================================================================
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-const ADMIN_PASSWORD = Deno.env.get("ADMIN_PASSWORD") ?? "";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
-const TOKEN_TTL_MS = 12 * 60 * 60 * 1000; // 12 horas
+const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
 
 /** Bucket público onde ficam as fotos dos profissionais. */
 const PHOTO_BUCKET = "nps-photos";
@@ -48,53 +42,22 @@ const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
-    "authorization, content-type, apikey, x-admin-token",
+    "authorization, content-type, apikey, x-client-info",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-// ---- Token (HMAC-SHA256 assinado com a própria ADMIN_PASSWORD) --------------
+// ---- Acesso: usuário logado com papel no sistema "nps" do Acessos central ----
 
-const encoder = new TextEncoder();
-
-async function hmac(message: string): Promise<string> {
-  const key = await crypto.subtle.importKey(
-    "raw",
-    encoder.encode(ADMIN_PASSWORD),
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"],
-  );
-  const sig = await crypto.subtle.sign("HMAC", key, encoder.encode(message));
-  return btoa(String.fromCharCode(...new Uint8Array(sig)))
-    .replaceAll("+", "-")
-    .replaceAll("/", "_")
-    .replaceAll("=", "");
-}
-
-/** Comparação em tempo constante (evita timing attacks). */
-function safeEqual(a: string, b: string): boolean {
-  if (a.length !== b.length) return false;
-  let diff = 0;
-  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  return diff === 0;
-}
-
-async function makeToken(): Promise<{ token: string; expiresAt: number }> {
-  const expiresAt = Date.now() + TOKEN_TTL_MS;
-  const sig = await hmac(String(expiresAt));
-  return { token: `${expiresAt}.${sig}`, expiresAt };
-}
-
-async function verifyToken(token: string | null): Promise<boolean> {
-  if (!token) return false;
-  const dot = token.indexOf(".");
-  if (dot < 0) return false;
-  const expStr = token.slice(0, dot);
-  const sig = token.slice(dot + 1);
-  const exp = Number(expStr);
-  if (!Number.isFinite(exp) || exp < Date.now()) return false;
-  const expected = await hmac(expStr);
-  return safeEqual(sig, expected);
+async function temAcesso(authorization: string | null): Promise<boolean> {
+  if (!authorization) return false;
+  const comoUsuario = createClient(SUPABASE_URL, ANON_KEY, {
+    global: { headers: { Authorization: authorization } },
+    auth: { persistSession: false },
+  });
+  const { data: { user } } = await comoUsuario.auth.getUser();
+  if (!user) return false;
+  const { data } = await comoUsuario.rpc("acesso_meu", { p_sistema: "nps" });
+  return !!(data as { papel?: string } | null)?.papel;
 }
 
 // ---- Fotos (bucket em vez de base64 na tabela) ------------------------------
@@ -164,10 +127,6 @@ Deno.serve(async (req) => {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
 
-  if (!ADMIN_PASSWORD) {
-    return json({ error: "ADMIN_PASSWORD não configurado no servidor." }, 500);
-  }
-
   // deno-lint-ignore no-explicit-any
   let body: any = {};
   try {
@@ -177,22 +136,13 @@ Deno.serve(async (req) => {
   }
   const action = String(body.action ?? "");
 
-  // ---- login: valida a senha e emite o token --------------------------------
+  // ---- a senha única foi aposentada: o login é o do time ---------------------
   if (action === "login") {
-    const password = String(body.password ?? "");
-    if (password.length === 0 || !safeEqual(password, ADMIN_PASSWORD)) {
-      return json({ error: "Senha incorreta." }, 401);
-    }
-    const { token, expiresAt } = await makeToken();
-    return json({ token, expiresAt });
+    return json({ error: "Entre com o seu e-mail e senha do time." }, 410);
   }
 
-  // ---- demais ações: exigem token válido ------------------------------------
-  const token =
-    req.headers.get("x-admin-token") ??
-    (req.headers.get("Authorization")?.replace(/^Bearer\s+/i, "") || null);
-
-  if (!(await verifyToken(token))) {
+  // ---- todas as ações: login do time com permissão em "nps" ------------------
+  if (!(await temAcesso(req.headers.get("Authorization")))) {
     return json({ error: "Não autorizado. Faça login novamente." }, 401);
   }
 

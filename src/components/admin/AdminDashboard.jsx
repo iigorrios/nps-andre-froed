@@ -79,8 +79,8 @@ export default function AdminDashboard({ onLogout }) {
   const focusRow = ranking.find((r) => r.professional.id === focusId) ?? null;
   const overallBand = npsBand(overall.nps);
 
-  const handleLogout = () => {
-    adminLogout();
+  const handleLogout = async () => {
+    await adminLogout();
     onLogout();
   };
 

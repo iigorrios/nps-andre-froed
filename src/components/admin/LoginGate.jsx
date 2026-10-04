@@ -4,13 +4,14 @@ import { adminLogin } from "../../lib/adminAuth.js";
 import { isSupabaseConfigured } from "../../lib/supabaseClient.js";
 
 /**
- * Tela de acesso do painel. Pede a senha única (cadastrada nos Secrets do
- * Supabase) e, ao validar, guarda o token da sessão.
+ * Tela de acesso do painel: e-mail e senha do time. Quem pode entrar é
+ * definido no sistema central de Acessos (sistema "nps").
  *
  * Props:
  *  - onSuccess: () => void  — chamado após login bem-sucedido
  */
 export default function LoginGate({ onSuccess }) {
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -21,7 +22,7 @@ export default function LoginGate({ onSuccess }) {
     setError("");
     setLoading(true);
     try {
-      await adminLogin(password);
+      await adminLogin(email, password);
       onSuccess();
     } catch (err) {
       setError(err?.message || "Não foi possível entrar.");
@@ -42,7 +43,7 @@ export default function LoginGate({ onSuccess }) {
           Painel de NPS
         </h1>
         <p className="mt-1 text-sm text-slate-500">
-          Área restrita. Informe a senha de acesso.
+          Área restrita. Entre com o seu login do time.
         </p>
 
         {!isSupabaseConfigured && (
@@ -53,6 +54,21 @@ export default function LoginGate({ onSuccess }) {
         )}
 
         <div className="mt-5">
+          <label htmlFor="admin-email" className="block text-sm font-medium text-slate-600">
+            E-mail
+          </label>
+          <input
+            id="admin-email"
+            type="email"
+            autoFocus
+            autoComplete="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            className="mt-1 w-full rounded-xl border-2 border-slate-200 p-3 text-slate-800 placeholder:text-slate-400 focus:border-brand-400"
+          />
+        </div>
+
+        <div className="mt-4">
           <label
             htmlFor="admin-password"
             className="block text-sm font-medium text-slate-600"
@@ -62,7 +78,7 @@ export default function LoginGate({ onSuccess }) {
           <input
             id="admin-password"
             type="password"
-            autoFocus
+            autoComplete="current-password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             placeholder="••••••••"
@@ -76,7 +92,7 @@ export default function LoginGate({ onSuccess }) {
 
         <button
           type="submit"
-          disabled={loading || !password}
+          disabled={loading || !password || !email}
           className="mt-5 w-full rounded-xl bg-brand-600 py-3 font-semibold text-white transition-colors hover:bg-brand-700 disabled:cursor-not-allowed disabled:bg-slate-300"
         >
           {loading ? "Entrando…" : "Entrar"}

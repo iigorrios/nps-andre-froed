@@ -1,52 +1,44 @@
-import { ADMIN_FN_URL, SUPABASE_ANON_KEY } from "./supabaseClient.js";
+import { supabase } from "./supabaseClient.js";
 
 /**
- * Autenticação do painel por SENHA ÚNICA (guardada como secret no Supabase).
+ * Autenticação do painel com o LOGIN DO TIME (Supabase Auth).
  *
- * O login troca a senha por um token assinado (validade de 12h), guardado no
- * sessionStorage. A senha em si nunca fica salva no navegador.
+ * Quem pode entrar é definido no sistema central de Acessos (acessos-af),
+ * sistema "nps". A senha única antiga foi aposentada.
  */
-const TOKEN_KEY = "af_nps_admin_token";
-const EXP_KEY = "af_nps_admin_exp";
 
-/** Faz login; em caso de sucesso, guarda o token e devolve os dados. */
-export async function adminLogin(password) {
-  const res = await fetch(ADMIN_FN_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      apikey: SUPABASE_ANON_KEY,
-      // A anon key também vai como Bearer para satisfazer o gateway do Supabase
-      // quando a função está com "Verify JWT" ligado. Nosso token de admin (no
-      // login ainda não existe) trafega à parte, no header x-admin-token.
-      Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
-    },
-    body: JSON.stringify({ action: "login", password }),
-  });
-
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || "Falha ao entrar.");
-
-  sessionStorage.setItem(TOKEN_KEY, data.token);
-  sessionStorage.setItem(EXP_KEY, String(data.expiresAt));
-  return data;
+async function temAcesso() {
+  const { data, error } = await supabase.rpc("acesso_meu", { p_sistema: "nps" });
+  if (error) return false;
+  return Boolean(data?.papel);
 }
 
-/** Devolve o token válido (ou null se ausente/expirado). */
-export function getAdminToken() {
-  const token = sessionStorage.getItem(TOKEN_KEY);
-  const exp = Number(sessionStorage.getItem(EXP_KEY));
-  if (!token || !Number.isFinite(exp) || exp < Date.now()) return null;
-  return token;
+/** Faz login com e-mail e senha do time e confere a permissão no NPS. */
+export async function adminLogin(email, password) {
+  const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
+  if (error) {
+    throw new Error(error.message === "Invalid login credentials" ? "E-mail ou senha incorretos." : error.message);
+  }
+  if (!(await temAcesso())) {
+    await supabase.auth.signOut();
+    throw new Error("Seu login não tem acesso ao painel de NPS. Peça ao administrador do time.");
+  }
+}
+
+/** Token da sessão atual (access_token) ou null. */
+export async function getAdminToken() {
+  const { data } = await supabase.auth.getSession();
+  return data.session?.access_token ?? null;
 }
 
 /** Encerra a sessão do painel. */
-export function adminLogout() {
-  sessionStorage.removeItem(TOKEN_KEY);
-  sessionStorage.removeItem(EXP_KEY);
+export async function adminLogout() {
+  await supabase.auth.signOut();
 }
 
-/** Há uma sessão de admin válida? */
-export function isAdminAuthed() {
-  return getAdminToken() !== null;
+/** Há uma sessão do time com acesso ao NPS? */
+export async function isAdminAuthed() {
+  const token = await getAdminToken();
+  if (!token) return false;
+  return temAcesso();
 }
