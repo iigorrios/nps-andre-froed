@@ -153,7 +153,7 @@ Deno.serve(async (req) => {
   switch (action) {
     case "listResponses": {
       const { data, error } = await supabase
-        .from("nps_responses")
+        .schema("nps").from("nps_responses")
         // Sem embutir o profissional: o painel já carrega a lista de
         // profissionais à parte e cruza por `professional_id`. Embutir a foto em
         // cada resposta multiplicava o payload (dezenas de MB) e estourava o
@@ -169,7 +169,7 @@ Deno.serve(async (req) => {
     case "deleteResponse": {
       if (body.id == null) return json({ error: "id obrigatório." }, 400);
       const { error } = await supabase
-        .from("nps_responses")
+        .schema("nps").from("nps_responses")
         .delete()
         .eq("id", body.id);
       if (error) return json({ error: error.message }, 400);
@@ -185,7 +185,7 @@ Deno.serve(async (req) => {
       }
       // Grava primeiro sem foto: o id da linha é o nome do arquivo no bucket.
       const { data, error } = await supabase
-        .from("nps_professionals")
+        .schema("nps").from("nps_professionals")
         .insert({ name, role, photo: null })
         .select("id, name, role, photo")
         .single();
@@ -196,7 +196,7 @@ Deno.serve(async (req) => {
       try {
         const url = await uploadPhoto(supabase, data.id, String(photo));
         const { data: updated, error: upErr } = await supabase
-          .from("nps_professionals")
+          .schema("nps").from("nps_professionals")
           .update({ photo: url })
           .eq("id", data.id)
           .select("id, name, role, photo")
@@ -205,7 +205,7 @@ Deno.serve(async (req) => {
         return json({ professional: updated });
       } catch (e) {
         // Foto falhou → desfaz o cadastro para não deixar registro pela metade.
-        await supabase.from("nps_professionals").delete().eq("id", data.id);
+        await supabase.schema("nps").from("nps_professionals").delete().eq("id", data.id);
         await removePhoto(supabase, data.id);
         return json(
           { error: (e as Error).message || "Falha ao salvar a foto." },
@@ -217,7 +217,7 @@ Deno.serve(async (req) => {
     case "deleteProfessional": {
       if (body.id == null) return json({ error: "id obrigatório." }, 400);
       const { error } = await supabase
-        .from("nps_professionals")
+        .schema("nps").from("nps_professionals")
         .delete()
         .eq("id", body.id);
       if (error) return json({ error: error.message }, 400);

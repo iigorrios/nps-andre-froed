@@ -10,7 +10,7 @@ import { supabase } from "./supabaseClient.js";
 /** Busca os profissionais ativos, ordenados por nome. */
 export async function fetchProfessionals() {
   const { data, error } = await supabase
-    .from("nps_professionals")
+    .schema("nps").from("nps_professionals")
     .select("id, name, role, photo")
     .eq("active", true)
     .order("name");
@@ -32,6 +32,6 @@ export async function fetchProfessionals() {
  * }} payload  — `created_at` é preenchido pelo banco (default now()).
  */
 export async function submitResponse(payload) {
-  const { error } = await supabase.from("nps_responses").insert(payload);
+  const { error } = await supabase.schema("nps").from("nps_responses").insert(payload);
   if (error) throw error;
 }
