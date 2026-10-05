@@ -7,10 +7,11 @@ import { supabase } from "./supabaseClient.js";
  * sistema "nps". A senha única antiga foi aposentada.
  */
 
-async function temAcesso() {
+/** Papel no sistema "nps" ("admin" ou "time", que vê tudo mas não apaga) ou null. */
+async function meuPapel() {
   const { data, error } = await supabase.rpc("acesso_meu", { p_sistema: "nps" });
-  if (error) return false;
-  return Boolean(data?.papel);
+  if (error) return null;
+  return data?.papel ?? null;
 }
 
 /** Faz login com e-mail e senha do time e confere a permissão no NPS. */
@@ -19,7 +20,7 @@ export async function adminLogin(email, password) {
   if (error) {
     throw new Error(error.message === "Invalid login credentials" ? "E-mail ou senha incorretos." : error.message);
   }
-  if (!(await temAcesso())) {
+  if (!(await meuPapel())) {
     await supabase.auth.signOut();
     throw new Error("Seu login não tem acesso ao painel de NPS. Peça ao administrador do time.");
   }
@@ -36,9 +37,9 @@ export async function adminLogout() {
   await supabase.auth.signOut();
 }
 
-/** Há uma sessão do time com acesso ao NPS? */
-export async function isAdminAuthed() {
+/** Papel da sessão atual no NPS, ou null se não houver sessão com acesso. */
+export async function papelNoPainel() {
   const token = await getAdminToken();
-  if (!token) return false;
-  return temAcesso();
+  if (!token) return null;
+  return meuPapel();
 }

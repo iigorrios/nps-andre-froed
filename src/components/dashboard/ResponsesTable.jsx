@@ -15,6 +15,7 @@ import {
  *  - responses: lista (cada item pode ter `professional` embutido)
  *  - professionals: lista de profissionais (para o filtro e nomes)
  *  - onDelete: async (id) => void  — remove no backend e recarrega
+ *    (sem onDelete o botão de excluir não aparece: papel "time")
  */
 const NPS_BADGE = {
   promotor: "bg-emerald-50 text-emerald-700",
@@ -161,7 +162,7 @@ export default function ResponsesTable({ responses, professionals, onDelete }) {
                     >
                       {r.nps_score}
                     </span>
-                    <button
+                    {onDelete && <button
                       type="button"
                       onClick={() => handleDelete(r)}
                       disabled={deletingId === r.id}
@@ -177,7 +178,7 @@ export default function ResponsesTable({ responses, professionals, onDelete }) {
                           strokeLinejoin="round"
                         />
                       </svg>
-                    </button>
+                    </button>}
                   </div>
                 </div>
 

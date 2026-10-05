@@ -10,7 +10,8 @@
 // Autenticação: login do time (Supabase Auth) + permissão no sistema "nps" do
 // Acessos central (acessos-af). O painel manda o access_token do usuário no
 // Authorization; a função confere quem é e se public.acesso_meu('nps') devolve
-// um papel. A antiga senha única (ADMIN_PASSWORD) não é mais aceita.
+// um papel. As exclusões exigem o papel "admin" (o papel "time" só vê).
+// A antiga senha única (ADMIN_PASSWORD) não é mais aceita.
 //
 // Fotos: nunca são gravadas em base64 na tabela. O painel envia uma data-URL,
 // a função sobe o binário para o bucket público `nps-photos` e guarda só a URL
@@ -48,17 +49,20 @@ const corsHeaders = {
 
 // ---- Acesso: usuário logado com papel no sistema "nps" do Acessos central ----
 
-async function temAcesso(authorization: string | null): Promise<boolean> {
-  if (!authorization) return false;
+// Papel "admin" faz tudo; "time" (membro do time) vê tudo mas não apaga.
+async function meuPapel(authorization: string | null): Promise<string | null> {
+  if (!authorization) return null;
   const comoUsuario = createClient(SUPABASE_URL, ANON_KEY, {
     global: { headers: { Authorization: authorization } },
     auth: { persistSession: false },
   });
   const { data: { user } } = await comoUsuario.auth.getUser();
-  if (!user) return false;
+  if (!user) return null;
   const { data } = await comoUsuario.rpc("acesso_meu", { p_sistema: "nps" });
-  return !!(data as { papel?: string } | null)?.papel;
+  return (data as { papel?: string } | null)?.papel ?? null;
 }
+
+const SO_ADMIN = new Set(["deleteResponse", "deleteProfessional"]);
 
 // ---- Fotos (bucket em vez de base64 na tabela) ------------------------------
 
@@ -142,8 +146,12 @@ Deno.serve(async (req) => {
   }
 
   // ---- todas as ações: login do time com permissão em "nps" ------------------
-  if (!(await temAcesso(req.headers.get("Authorization")))) {
+  const papel = await meuPapel(req.headers.get("Authorization"));
+  if (!papel) {
     return json({ error: "Não autorizado. Faça login novamente." }, 401);
+  }
+  if (SO_ADMIN.has(action) && papel !== "admin") {
+    return json({ error: "Só o admin pode excluir." }, 403);
   }
 
   const supabase = createClient(SUPABASE_URL, SERVICE_ROLE, {

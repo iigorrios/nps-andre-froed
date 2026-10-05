@@ -26,6 +26,7 @@ import {
  *
  * Props:
  *  - onLogout: () => void
+ *  - podeApagar: boolean — só o papel "admin" exclui respostas
  */
 const TABS = [
   { key: "overview", label: "Visão geral" },
@@ -33,7 +34,7 @@ const TABS = [
   { key: "manage", label: "Profissionais" },
 ];
 
-export default function AdminDashboard({ onLogout }) {
+export default function AdminDashboard({ onLogout, podeApagar }) {
   const [tab, setTab] = useState("overview");
   const [selectedId, setSelectedId] = useState(null);
 
@@ -248,7 +249,7 @@ export default function AdminDashboard({ onLogout }) {
               <ResponsesTable
                 responses={responses}
                 professionals={professionals}
-                onDelete={handleDeleteResponse}
+                onDelete={podeApagar ? handleDeleteResponse : undefined}
               />
             )}
 
